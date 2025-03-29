@@ -5,16 +5,213 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Movie Website</title>
     <link rel="stylesheet" href="index.css">
-    <script defer src="script.js"></script>
-    <script src="https://kit.fontawesome.com/your-fontawesome-key.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script defer src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
 </head>
 <body>
-    <header>
-        <h1>🎬 Movie Explorer</h1>
-        <input type="text" id="search" placeholder="Search for a movie...">
-        <button onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
-    </header>
-    <main id="movie-container"></main>
-    <script src="index.js"></script>
+
+<header class="p-3 bg-primary text-white text-center">
+    <h2>Movie Website</h2>
+</header>
+
+<div class="container mt-4">
+    <button id="addMovieBtn" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#movieModal">Add Movie</button>
+    <button id="clearMoviesBtn" class="btn btn-danger mb-3">Clear All Movies</button>
+    <div id="movieContainer"></div>
+</div>
+
+<!-- Bootstrap Modal -->
+<div class="modal fade" id="movieModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Movie</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label>Title:</label><input type="text" class="form-control" id="title">
+                <label>Director:</label><input type="text" class="form-control" id="director">
+                <label>Rating:</label><input type="number" class="form-control" id="rating" min="1" max="5">
+                <label>Genres:</label><input type="text" class="form-control" id="genres">
+                <label>Info:</label><textarea class="form-control" id="info"></textarea>
+                <label>Poster:</label><input type="file" class="form-control" id="poster" accept="image/*">
+                <label>Logo:</label><input type="file" class="form-control" id="logo" accept="image/*">
+                <label>Cast (Multiple):</label><input type="file" class="form-control" id="cast" accept="image/*" multiple>
+                <label>Watch Link:</label><input type="text" class="form-control" id="watchLink">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveMovie">Save Movie</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db;
+
+    function openDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open("MovieDB", 1);
+            request.onupgradeneeded = (event) => {
+                db = event.target.result;
+                if (!db.objectStoreNames.contains("movies")) {
+                    db.createObjectStore("movies", { keyPath: "id", autoIncrement: true });
+                }
+            };
+            request.onsuccess = () => {
+                db = request.result;
+                resolve(db);
+            };
+            request.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    function saveMovieToDB(movie) {
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(["movies"], "readwrite");
+            const store = transaction.objectStore("movies");
+            store.add(movie);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    function getMoviesFromDB() {
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(["movies"], "readonly");
+            const store = transaction.objectStore("movies");
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    function convertToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (error) => reject(error);
+        });
+    }
+
+    async function convertMultipleToBase64(files) {
+        const base64Images = [];
+        for (const file of files) {
+            const base64 = await convertToBase64(file);
+            base64Images.push(base64);
+        }
+        return base64Images;
+    }
+
+    function deleteMovieFromDB(movieId) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(["movies"], "readwrite");
+        const store = transaction.objectStore("movies");
+        store.delete(movieId);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = (event) => reject(event.target.error);
+    });
+}
+
+
+    function renderMovies(movies) {
+        const movieContainer = document.getElementById("movieContainer");
+        movieContainer.innerHTML = "";
+        
+        movies.forEach(movie => {
+            const castImages = movie.cast ? movie.cast.map(img => `<img src="${img}" class="cast-img img-fluid m-1" width="50" height="50">`).join("") : "";
+
+            const card = document.createElement("div");
+            // card.classList.add("col-md-4");
+            card.classList.add("card");
+            card.innerHTML = `
+                    <div class="poster">
+                        <img src="${movie.poster}" alt="${movie.title}" class="img-fluid">
+                    </div>
+                    <div class="details p-3">
+                        <img src="${movie.logo}" class="movie-logo img-fluid" alt="${movie.title}">
+                        <h3>${movie.title}</h3>
+                        <h5>Director: ${movie.director}</h5>
+                        <div class="movierating">
+                            ${"<i class='fa-solid fa-star'></i>".repeat(movie.rating)}
+                            ${"<i class='fa-regular fa-star'></i>".repeat(5 - movie.rating)}
+                        </div>
+                        <div class="tags mt-2">
+                            ${movie.genres.map(genre => `<span class='badge bg-primary'>${genre}</span>`).join(" ")}
+                        </div>
+                        <div class="info">
+                            <h4>Info</h4>
+                            <p>${movie.info}</p>
+                        </div>
+                        ${movie.cast.length > 0 ? `
+                            <div class="info mt-2">
+                                <h4>Cast</h4>
+                                <div class="cast-images">${castImages}</div>
+                            </div>` : ""}
+                        <div class="watch mt-3">
+                            <a href="${movie.watchLink}" target="_blank" class="btn btn-warning">Watch Movie</a>
+                        </div>
+                        <button class="btn btn-danger mt-2 deleteMovieBtn" data-id="${movie.id}">Delete</button>
+                    </div>
+            `;
+            movieContainer.appendChild(card);
+        });
+
+        // Attach event listeners to delete buttons
+        document.querySelectorAll(".deleteMovieBtn").forEach(button => {
+            button.addEventListener("click", async (event) => {
+                const movieId = Number(event.target.getAttribute("data-id"));
+                if (confirm("Are you sure you want to delete this movie?")) {
+                    await deleteMovieFromDB(movieId);
+                    const updatedMovies = await getMoviesFromDB();
+                    renderMovies(updatedMovies);
+                }
+            });
+        });
+    }
+
+
+    document.getElementById("saveMovie").addEventListener("click", async () => {
+        const title = document.getElementById("title").value;
+        const director = document.getElementById("director").value;
+        const rating = parseInt(document.getElementById("rating").value);
+        const genres = document.getElementById("genres").value.split(",").map(g => g.trim());
+        const info = document.getElementById("info").value;
+        const watchLink = document.getElementById("watchLink").value;
+
+        const posterFile = document.getElementById("poster").files[0];
+        const logoFile = document.getElementById("logo").files[0];
+        const castFiles = document.getElementById("cast").files;
+
+        const poster = await convertToBase64(posterFile);
+        const logo = await convertToBase64(logoFile);
+        const cast = castFiles.length > 0 ? await convertMultipleToBase64(castFiles) : [];
+
+        const movie = { title, director, rating, genres, info, poster, logo, cast, watchLink };
+
+        await saveMovieToDB(movie);
+        const movies = await getMoviesFromDB();
+        renderMovies(movies);
+
+        bootstrap.Modal.getInstance(document.getElementById("movieModal")).hide();
+    });
+
+    openDB().then(() => getMoviesFromDB().then(renderMovies));
+
+
+    document.getElementById("clearMoviesBtn").addEventListener("click", () => {
+        if (confirm("Are you sure you want to delete all movies?")) {
+            const transaction = db.transaction(["movies"], "readwrite");
+            const store = transaction.objectStore("movies");
+            store.clear();
+            transaction.oncomplete = () => renderMovies([]);
+        }
+    });
+</script>
+
 </body>
 </html>
